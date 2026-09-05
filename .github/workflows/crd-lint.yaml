@@ -1,0 +1,48 @@
+name: Lint CRD
+
+on:
+  pull_request:
+    paths:
+      - "config/crd/bases/**"
+    branches:
+      - main
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: '1'
+          path: new
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: '1'
+          ref: main
+          path: old
+      - name: Download crdiff and check CRDs
+        run: |
+          # ----- download + unpack --------------------------------------------------
+          curl -L -o crdiff.tgz \
+            https://github.com/xrstf/crdiff/releases/download/v0.0.2/crdiff_0.0.2_linux_amd64.tar.gz
+          tar -xf crdiff.tgz
+          mv crdiff_0.0.2_linux_amd64/crdiff crdiff
+
+          # ----- run crdiff ---------------------------------------------------------
+          set +e
+          ./crdiff breaking old/config/crd/bases/ new/config/crd/bases/ > report 2>&1
+          set -e
+
+          # ----- show the report ----------------------------------------------------
+          echo "---------- crdiff report ----------"
+          cat report
+          echo "-----------------------------------"
+
+          # ----- evaluate the result -----------------------------------------------
+          if grep -q "No changes detected." report; then
+            echo "No breaking changes found."
+          else
+            echo "Breaking changes detected, but not failing the build."
+          fi
+          exit 0
