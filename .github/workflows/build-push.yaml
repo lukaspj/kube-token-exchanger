@@ -28,7 +28,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/laldershaab/kube-token-exchanger
+            ghcr.io/lukaspj/kube-token-exchanger
           tags: |
             type=semver,pattern={{version}}
             type=sha
