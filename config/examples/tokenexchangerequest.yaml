@@ -1,0 +1,26 @@
+apiVersion: tokenexchange.aldershaab-it.dk/v1alpha1
+kind: TokenExchangeRequest
+metadata:
+  name: my-workload
+  namespace: default
+spec:
+  serviceAccount:
+    name: my-workload
+  # Bound audience of the minted ServiceAccount token. Must match the audience
+  # configured on the OIDC source in authentik.
+  audience: https://authentik.central-dev.aldershaab-it.dk
+  tokenLifetime: 5m
+  refreshWindow: 30s
+  authentik:
+    url: https://authentik.central-dev.aldershaab-it.dk
+    clientId:
+      name: authentik-oauth2-client
+      key: client-id
+    clientSecret:
+      name: authentik-oauth2-client
+      key: client-secret
+    scopes:
+      - openid
+      - email
+  targetSecret:
+    name: my-workload-authentik-token

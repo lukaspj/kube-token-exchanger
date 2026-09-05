@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-workload
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-workload
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-workload
+  template:
+    metadata:
+      labels:
+        app: my-workload
+    spec:
+      serviceAccountName: my-workload
+      containers:
+        - name: app
+          image: example/workload:latest
+          env:
+            - name: AUTHENTIK_TOKEN_FILE
+              value: /var/run/authentik/token
+          volumeMounts:
+            - name: authentik-token
+              mountPath: /var/run/authentik
+              readOnly: true
+      volumes:
+        - name: authentik-token
+          secret:
+            secretName: my-workload-authentik-token
+            items:
+              - key: token
+                path: token

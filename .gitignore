@@ -1,0 +1,48 @@
+# Binaries
+bin/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace / module cache artifacts
+vendor/
+go.work
+go.work.sum
+
+# Test + coverage
+coverage.*
+*.coverprofile
+
+# Env / secrets
+.env
+.env.*
+.envrc
+*.pem
+*.key
+!config/rbac/*.yaml
+
+# Build / packaging
+dist/
+release/
+Dockerfile.local
+*.tar.gz
+*.tgz
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

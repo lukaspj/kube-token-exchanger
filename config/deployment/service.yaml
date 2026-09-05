@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-token-exchanger-metrics
+  namespace: kube-token-exchanger
+  labels:
+    app.kubernetes.io/name: kube-token-exchanger
+spec:
+  selector:
+    app.kubernetes.io/name: kube-token-exchanger
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
