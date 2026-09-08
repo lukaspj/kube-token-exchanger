@@ -70,6 +70,9 @@ type TokenExchangeRequestReconciler struct {
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 	Minter   Minter
+	// AuthentikConfig holds the authentik connection settings, provided by
+	// the operator's startup flags.
+	AuthentikConfig authentik.Config
 	// NewAuthentikClient is a factory returning an Exchanger for the given
 	// configuration. Defaults to building an *authentik.Client.
 	NewAuthentikClient AuthentikClientFunc
@@ -128,14 +131,7 @@ func (r *TokenExchangeRequestReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, nil
 	}
 
-	cfg, err := r.authentikConfig(ctx, &ter)
-	if err != nil {
-		r.markFailed(ctx, &ter, ReasonInvalidSpec, err.Error())
-		r.Recorder.Event(&ter, corev1.EventTypeWarning, ReasonInvalidSpec, err.Error())
-		return ctrl.Result{}, nil
-	}
-
-	exchanger, err := r.exchanger(ctx, cfg)
+	exchanger, err := r.exchanger(ctx, r.AuthentikConfig)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -150,7 +146,6 @@ func (r *TokenExchangeRequestReconciler) Reconcile(ctx context.Context, req ctrl
 	start := time.Now()
 	exchangeReq := authentik.ExchangeRequest{
 		SubjectToken: saToken,
-		Scopes:       ter.Spec.Authentik.Scopes,
 	}
 
 	resp, err := exchanger.Exchange(ctx, exchangeReq)
@@ -220,37 +215,6 @@ func (r *TokenExchangeRequestReconciler) tokenIsFresh(ctx context.Context, names
 		return false, time.Time{}, nil
 	}
 	return expiresAt.After(now.Add(refreshWindow)), expiresAt, nil
-}
-
-func (r *TokenExchangeRequestReconciler) authentikConfig(ctx context.Context, ter *v1alpha1.TokenExchangeRequest) (authentik.Config, error) {
-	cfg := authentik.Config{
-		URL:         ter.Spec.Authentik.URL,
-		TokenPath:   ter.Spec.Authentik.TokenEndpointPath,
-		InsecureTLS: ter.Spec.Authentik.InsecureTLS,
-		Timeout:     durationOrDefault(ter.Spec.Authentik.Timeout, 15*time.Second),
-	}
-
-	if ter.Spec.Authentik.CACert != nil {
-		ca, err := r.secretValue(ctx, ter, *ter.Spec.Authentik.CACert)
-		if err != nil {
-			return cfg, err
-		}
-		cfg.CACert = []byte(ca)
-	}
-	return cfg, nil
-}
-
-func (r *TokenExchangeRequestReconciler) secretValue(ctx context.Context, ter *v1alpha1.TokenExchangeRequest, sel v1alpha1.SecretKeySelector) (string, error) {
-	ns := namespaceOrDefault(ter.Namespace, sel.Namespace)
-	var sec corev1.Secret
-	if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: sel.Name}, &sec); err != nil {
-		return "", fmt.Errorf("reading secret %s/%s: %w", ns, sel.Name, err)
-	}
-	val, ok := sec.Data[sel.Key]
-	if !ok {
-		return "", fmt.Errorf("secret %s/%s has no key %q", ns, sel.Name, sel.Key)
-	}
-	return string(val), nil
 }
 
 // exchanger builds the authentik client for the resolved configuration.
@@ -323,9 +287,6 @@ func validateSpec(ter *v1alpha1.TokenExchangeRequest) error {
 	}
 	if ter.Spec.ServiceAccount.Name == "" {
 		return fmt.Errorf("spec.serviceAccount.name is required")
-	}
-	if ter.Spec.Authentik.URL == "" {
-		return fmt.Errorf("spec.authentik.url is required")
 	}
 	if ter.Spec.TargetSecret.Name == "" {
 		return fmt.Errorf("spec.targetSecret.name is required")

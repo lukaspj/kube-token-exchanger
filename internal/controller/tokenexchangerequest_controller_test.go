@@ -84,12 +84,8 @@ func testCR(name, namespace string) *v1alpha1.TokenExchangeRequest {
 		Spec: v1alpha1.TokenExchangeRequestSpec{
 			ServiceAccount: v1alpha1.ServiceAccountRef{Name: "sa", Namespace: namespace},
 			Audience:       "test-audience",
-		Authentik: v1alpha1.AuthentikConfig{
-			URL:    "https://authentik.example.com",
-			Scopes: []string{"openid"},
+			TargetSecret:   v1alpha1.SecretRef{Name: "target", Namespace: namespace},
 		},
-		TargetSecret: v1alpha1.SecretRef{Name: "target", Namespace: namespace},
-	},
 	}
 }
 
@@ -118,6 +114,10 @@ func newTestReconciler(t *testing.T, objs ...client.Object) (*TokenExchangeReque
 		Scheme:   s,
 		Recorder: record.NewFakeRecorder(32),
 		Minter:   minter,
+		AuthentikConfig: authentik.Config{
+			URL:    "https://authentik.example.com",
+			Scopes: []string{"openid"},
+		},
 		NewAuthentikClient: func(_ context.Context, _ authentik.Config) (Exchanger, error) {
 			return exchanger, nil
 		},

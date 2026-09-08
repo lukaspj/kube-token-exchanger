@@ -25,10 +25,6 @@ type TokenExchangeRequestSpec struct {
 	// +optional
 	RefreshWindow *metav1.Duration `json:"refreshWindow,omitempty"`
 
-	// Authentik holds the connection settings for the authentik token
-	// endpoint performing the RFC 8693 token exchange.
-	Authentik AuthentikConfig `json:"authentik"`
-
 	// TargetSecret is the Secret the exchanged authentik token is written to.
 	TargetSecret SecretRef `json:"targetSecret"`
 }
@@ -46,45 +42,6 @@ type SecretRef struct {
 	Name string `json:"name"`
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
-}
-
-// AuthentikConfig holds the connection settings for the authentik instance.
-type AuthentikConfig struct {
-	// URL is the base URL of the authentik instance, e.g.
-	// https://authentik.example.com.
-	URL string `json:"url"`
-
-	// Scopes requested on the exchanged token, e.g. openid, email.
-	// +optional
-	Scopes []string `json:"scopes,omitempty"`
-
-	// TokenEndpointPath overrides the token endpoint path.
-	// Defaults to /application/o/token/.
-	// +optional
-	TokenEndpointPath string `json:"tokenEndpointPath,omitempty"`
-
-	// Timeout for HTTP requests against authentik. Defaults to 15s.
-	// +optional
-	Timeout *metav1.Duration `json:"timeout,omitempty"`
-
-	// InsecureTLS disables TLS certificate verification. Do not enable in
-	// production.
-	// +optional
-	InsecureTLS bool `json:"insecureTLS,omitempty"`
-
-	// CACert references a PEM certificate authority used to verify the
-	// authentik TLS certificate.
-	// +optional
-	CACert *SecretKeySelector `json:"caCert,omitempty"`
-}
-
-// SecretKeySelector references a key in a Secret. When Namespace is empty,
-// the namespace of the TokenExchangeRequest is used.
-type SecretKeySelector struct {
-	Name string `json:"name"`
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-	Key      string `json:"key"`
 }
 
 // TokenExchangeRequestStatus defines the observed state of TokenExchangeRequest.

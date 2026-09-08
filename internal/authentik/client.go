@@ -32,6 +32,8 @@ const (
 type Config struct {
 	URL         string
 	TokenPath   string
+	// Scopes are the default OAuth2 scopes requested on exchanged tokens.
+	Scopes      []string
 	Timeout     time.Duration
 	InsecureTLS bool
 	CACert      []byte
@@ -133,11 +135,16 @@ func (c *Client) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeRe
 		return nil, errors.New("authentik: subject token is required")
 	}
 
+	scopes := req.Scopes
+	if len(scopes) == 0 {
+		scopes = c.cfg.Scopes
+	}
+
 	form := url.Values{
 		"grant_type":         {GrantTypeTokenExchange},
 		"subject_token":      {req.SubjectToken},
 		"subject_token_type": {TokenTypeJWT},
-		"scope":              {strings.Join(req.Scopes, " ")},
+		"scope":              {strings.Join(scopes, " ")},
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.token, strings.NewReader(form.Encode()))
