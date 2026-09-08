@@ -62,54 +62,6 @@ spec:
                   ServiceAccount token. It must match the audience configuration of the
                   OIDC source registered in authentik.
                 type: string
-              authentik:
-                description: |-
-                  Authentik holds the connection settings for the authentik token
-                  endpoint performing the RFC 8693 token exchange.
-                properties:
-                  caCert:
-                    description: |-
-                      CACert references a PEM certificate authority used to verify the
-                      authentik TLS certificate.
-                    properties:
-                      key:
-                        type: string
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - key
-                    - name
-                    type: object
-                  insecureTLS:
-                    description: |-
-                      InsecureTLS disables TLS certificate verification. Do not enable in
-                      production.
-                    type: boolean
-                  scopes:
-                    description: Scopes requested on the exchanged token, e.g. openid,
-                      email.
-                    items:
-                      type: string
-                    type: array
-                  timeout:
-                    description: Timeout for HTTP requests against authentik. Defaults
-                      to 15s.
-                    type: string
-                  tokenEndpointPath:
-                    description: |-
-                      TokenEndpointPath overrides the token endpoint path.
-                      Defaults to /application/o/token/.
-                    type: string
-                  url:
-                    description: |-
-                      URL is the base URL of the authentik instance, e.g.
-                      https://authentik.example.com.
-                    type: string
-                required:
-                - url
-                type: object
               refreshWindow:
                 description: |-
                   RefreshWindow defines how long before expiry a new exchange is
@@ -145,7 +97,6 @@ spec:
                 type: string
             required:
             - audience
-            - authentik
             - serviceAccount
             - targetSecret
             type: object

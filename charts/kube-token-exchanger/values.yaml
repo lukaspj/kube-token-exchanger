@@ -18,6 +18,30 @@ serviceAccount:
   # -- Annotations to add to the ServiceAccount.
   annotations: {}
 
+# -- Connection settings for the authentik instance performing the RFC 8693
+# token exchange. Configured on the operator, not on TokenExchangeRequests.
+authentik:
+  # -- Base URL of the authentik instance. Required.
+  url: ""
+  # -- OAuth2 scopes requested on exchanged tokens.
+  scopes:
+    - openid
+  # -- Optional: path of the token endpoint. Defaults to /application/o/token/.
+  tokenPath: ""
+  # -- HTTP request timeout against authentik.
+  timeout: 15s
+  # -- Disable TLS certificate verification. Do not use in production.
+  insecureTLS: false
+  # -- Optional: mount a Secret holding a PEM certificate authority used to
+  # verify the authentik TLS certificate.
+  caCertSecret:
+    # -- Name of the Secret (leave empty to disable).
+    name: ""
+    # -- Key in the Secret holding the PEM bundle.
+    key: "ca.crt"
+    # -- Optional: path of the token endpoint secret key file.
+    optional: false
+
 # -- Operator command-line flags.
 args:
   leaderElect: true

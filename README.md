@@ -75,18 +75,17 @@ spec:
   audience: https://authentik.example.com
   tokenLifetime: 5m          # optional, default 5m
   refreshWindow: 30s         # optional, default 30s
-  authentik:
-    url: https://authentik.example.com
-    scopes: [openid, email]
   targetSecret:
     name: my-workload-authentik-token
 ```
 
-The exchange runs as a public client: no `clientId` or `clientSecret` is
-configured on the request. The authentik application performing the RFC 8693
-exchange is provisioned by the cluster admin, so workloads carry no provider
-credentials — their identity comes solely from the Kubernetes ServiceAccount
-token presented as the subject token.
+The authentik connection (URL, scopes, TLS settings) is configured on the
+operator via flags — see `--authentik-*` — not on the request. The exchange
+runs as a public client: no `clientId` or `clientSecret` is configured
+anywhere. The authentik application performing the RFC 8693 exchange is
+provisioned by the cluster admin, so workloads carry no provider credentials —
+their identity comes solely from the Kubernetes ServiceAccount token presented
+as the subject token.
 
 The target Secret contains:
 

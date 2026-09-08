@@ -11,10 +11,5 @@ spec:
   audience: https://authentik.central-dev.aldershaab-it.dk
   tokenLifetime: 5m
   refreshWindow: 30s
-  authentik:
-    url: https://authentik.central-dev.aldershaab-it.dk
-    scopes:
-      - openid
-      - email
   targetSecret:
     name: my-workload-authentik-token

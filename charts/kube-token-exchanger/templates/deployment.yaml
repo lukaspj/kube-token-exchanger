@@ -42,6 +42,22 @@ spec:
             {{- end }}
             - --metrics-bind-address={{ .Values.metrics.bindAddress }}
             - --health-probe-bind-address={{ .Values.health.bindAddress }}
+            {{- if .Values.authentik.url }}
+            - --authentik-url={{ .Values.authentik.url }}
+            {{- end }}
+            {{- with .Values.authentik.scopes }}
+            - --authentik-scopes={{ join "," . }}
+            {{- end }}
+            {{- with .Values.authentik.tokenPath }}
+            - --authentik-token-path={{ . }}
+            {{- end }}
+            - --authentik-timeout={{ .Values.authentik.timeout }}
+            {{- if .Values.authentik.insecureTLS }}
+            - --authentik-insecure-tls
+            {{- end }}
+            {{- if and .Values.authentik.caCertSecret.name .Values.authentik.caCertSecret.key }}
+            - --authentik-ca-cert=/etc/kube-token-exchanger/ca/{{ .Values.authentik.caCertSecret.key }}
+            {{- end }}
           ports:
             - name: metrics
               containerPort: {{ trimPrefix ":" .Values.metrics.bindAddress }}
@@ -61,6 +77,24 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if and .Values.authentik.caCertSecret.name .Values.authentik.caCertSecret.key }}
+          volumeMounts:
+            - name: authentik-ca-cert
+              mountPath: /etc/kube-token-exchanger/ca
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.authentik.caCertSecret.name .Values.authentik.caCertSecret.key }}
+      volumes:
+        - name: authentik-ca-cert
+          secret:
+            secretName: {{ .Values.authentik.caCertSecret.name }}
+            items:
+              - key: {{ .Values.authentik.caCertSecret.key }}
+                path: {{ .Values.authentik.caCertSecret.key }}
+            {{- if .Values.authentik.caCertSecret.optional }}
+            optional: true
+            {{- end }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
