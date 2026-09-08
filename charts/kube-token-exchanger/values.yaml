@@ -1,0 +1,104 @@
+# Default values for kube-token-exchanger.
+
+# -- Overrides the full name of chart resources.
+fullnameOverride: ""
+
+# -- Namespace the operator is deployed into. Created when namespace.create is true.
+namespace:
+  create: true
+  name: kube-token-exchanger
+
+image:
+  repository: ghcr.io/laldershaab/kube-token-exchanger
+  # -- Image tag. Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# -- Number of operator replicas. The operator elects a leader, so >1 is safe.
+replicaCount: 1
+
+serviceAccount:
+  # -- Annotations to add to the ServiceAccount.
+  annotations: {}
+
+# -- Operator command-line flags.
+args:
+  leaderElect: true
+
+metrics:
+  # -- Bind address for the metrics endpoint inside the pod.
+  bindAddress: ":8080"
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8080
+  # -- Set to true to render a ServiceMonitor (requires kube-prometheus-stack CRDs).
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    additionalLabels: {}
+
+health:
+  # -- Bind address for the health probe endpoint inside the pod.
+  bindAddress: ":8081"
+
+rbac:
+  # -- Create the ClusterRole and ClusterRoleBinding.
+  create: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop:
+      - ALL
+    add: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+livenessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+priorityClassName: ""
+
+# -- Extra pod labels.
+podLabels: {}
+
+# -- Extra pod annotations.
+podAnnotations: {}
+
+# -- Termination grace period in seconds.
+terminationGracePeriodSeconds: 30

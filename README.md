@@ -98,6 +98,31 @@ spec:
     name: my-workload-authentik-token
 ```
 
+### Private key JWT client authentication
+
+Instead of a shared `client_secret`, the operator can authenticate itself to
+authentik with a freshly minted Kubernetes ServiceAccount token presented as a
+`client_assertion` (RFC 7523 JWT bearer). authentik validates it through the
+same Kubernetes API server trust source used for `subject_token` JWTs.
+
+```yaml
+spec:
+  authentik:
+    url: https://authentik.example.com
+    clientId:
+      name: authentik-oauth2-client
+      key: client-id
+    clientAuthMethod: privateKeyJwt
+    clientAssertionServiceAccount:
+      name: token-exchanger            # SA in the operator's namespace
+      namespace: kube-token-exchanger
+    # clientAssertionAudience: client-id  # optional, defaults to the client ID
+```
+
+No `clientSecret` is required in this mode; the field is ignored. The operator
+needs `serviceaccounts/token` create permission on the assertion
+ServiceAccount (already granted cluster-wide by the bundled RBAC).
+
 The target Secret contains:
 
 | Key | Content |

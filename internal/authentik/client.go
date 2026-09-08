@@ -26,18 +26,30 @@ const (
 
 	// DefaultTokenPath is the authentik token endpoint path.
 	DefaultTokenPath = "/application/o/token/"
+
+	// ClientAuthClientSecretPost authenticates with the OAuth2 client secret
+	// sent in the token request body.
+	ClientAuthClientSecretPost = "clientSecretPost"
+
+	// ClientAuthPrivateKeyJWT authenticates with a client_assertion JWT
+	// bearer (RFC 7523) signed by the Kubernetes API server.
+	ClientAuthPrivateKeyJWT = "privateKeyJwt"
+
+	// ClientAssertionTypeJWTBearer is the RFC 7523 client_assertion_type.
+	ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 )
 
 // Config holds the connection settings for the authentik token endpoint.
 type Config struct {
-	URL          string
-	TokenPath    string
-	ClientID     string
-	ClientSecret string
-	Timeout      time.Duration
-	InsecureTLS  bool
-	CACert       []byte
-	HTTPClient   *http.Client
+	URL              string
+	TokenPath        string
+	ClientID         string
+	ClientSecret     string
+	ClientAuthMethod string
+	Timeout          time.Duration
+	InsecureTLS      bool
+	CACert           []byte
+	HTTPClient       *http.Client
 }
 
 // ExchangeRequest is a token exchange request.
@@ -45,6 +57,10 @@ type ExchangeRequest struct {
 	// SubjectToken is the token presented for exchange (a Kubernetes
 	// ServiceAccount JWT).
 	SubjectToken string
+	// ClientAssertion is the freshly minted Kubernetes ServiceAccount JWT
+	// presented as client_assertion when the client authenticates with
+	// private_key_jwt.
+	ClientAssertion string
 	// Scopes are the requested OAuth2 scopes.
 	Scopes []string
 }
@@ -65,10 +81,11 @@ func (r *ExchangeResponse) Expiry(now time.Time) time.Time {
 
 // Client performs token exchanges against an authentik instance.
 type Client struct {
-	cfg    Config
-	http   *http.Client
-	token  string // fully resolved token endpoint URL
-	scopes []string
+	cfg        Config
+	http       *http.Client
+	token      string // fully resolved token endpoint URL
+	authMethod string
+	scopes     []string
 }
 
 // New builds a Client from the given configuration.
@@ -79,8 +96,20 @@ func New(cfg Config) (*Client, error) {
 	if cfg.ClientID == "" {
 		return nil, errors.New("authentik: client ID is required")
 	}
-	if cfg.ClientSecret == "" {
-		return nil, errors.New("authentik: client secret is required")
+
+	authMethod := cfg.ClientAuthMethod
+	if authMethod == "" {
+		authMethod = ClientAuthClientSecretPost
+	}
+	switch authMethod {
+	case ClientAuthClientSecretPost:
+		if cfg.ClientSecret == "" {
+			return nil, errors.New("authentik: client secret is required for clientSecretPost")
+		}
+	case ClientAuthPrivateKeyJWT:
+		// The client assertion is minted per exchange; no client secret.
+	default:
+		return nil, fmt.Errorf("authentik: unsupported client auth method %q", authMethod)
 	}
 
 	tokenPath := cfg.TokenPath
@@ -118,7 +147,7 @@ func New(cfg Config) (*Client, error) {
 		}
 	}
 
-	return &Client{cfg: cfg, http: httpClient, token: tokenURL}, nil
+	return &Client{cfg: cfg, http: httpClient, token: tokenURL, authMethod: authMethod}, nil
 }
 
 // oauthError is the error body returned by the token endpoint on failure.
@@ -145,10 +174,20 @@ func (c *Client) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeRe
 	form := url.Values{
 		"grant_type":         {GrantTypeTokenExchange},
 		"client_id":          {c.cfg.ClientID},
-		"client_secret":      {c.cfg.ClientSecret},
 		"subject_token":      {req.SubjectToken},
 		"subject_token_type": {TokenTypeJWT},
 		"scope":              {strings.Join(req.Scopes, " ")},
+	}
+
+	switch c.authMethod {
+	case ClientAuthPrivateKeyJWT:
+		if req.ClientAssertion == "" {
+			return nil, errors.New("authentik: client assertion is required for privateKeyJwt")
+		}
+		form.Set("client_assertion_type", ClientAssertionTypeJWTBearer)
+		form.Set("client_assertion", req.ClientAssertion)
+	default:
+		form.Set("client_secret", c.cfg.ClientSecret)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.token, strings.NewReader(form.Encode()))

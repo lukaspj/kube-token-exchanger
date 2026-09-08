@@ -20,13 +20,22 @@ import (
 	"github.com/laldershaab/kube-token-exchanger/internal/authentik"
 )
 
+type mintCall struct {
+	namespace string
+	name      string
+	audiences []string
+	lifetime  time.Duration
+}
+
 type fakeMinter struct {
 	calls int
+	mints []mintCall
 	err   error
 }
 
 func (m *fakeMinter) Mint(_ context.Context, namespace, name string, audiences []string, lifetime time.Duration) (string, error) {
 	m.calls++
+	m.mints = append(m.mints, mintCall{namespace: namespace, name: name, audiences: audiences, lifetime: lifetime})
 	if m.err != nil {
 		return "", m.err
 	}
@@ -34,13 +43,15 @@ func (m *fakeMinter) Mint(_ context.Context, namespace, name string, audiences [
 }
 
 type fakeExchanger struct {
-	calls int
-	resp  *authentik.ExchangeResponse
-	err   error
+	calls   int
+	lastReq *authentik.ExchangeRequest
+	resp    *authentik.ExchangeResponse
+	err     error
 }
 
 func (e *fakeExchanger) Exchange(_ context.Context, req authentik.ExchangeRequest) (*authentik.ExchangeResponse, error) {
 	e.calls++
+	e.lastReq = &req
 	if e.err != nil {
 		return nil, e.err
 	}
@@ -295,6 +306,111 @@ func TestReconcileMintFailure(t *testing.T) {
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}}); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestReconcilePrivateKeyJWT(t *testing.T) {
+	cr := testCR("t1", "ns1")
+	cr.Spec.Authentik.ClientAuthMethod = authentik.ClientAuthPrivateKeyJWT
+	cr.Spec.Authentik.ClientAssertionServiceAccount = &v1alpha1.ServiceAccountRef{Name: "op-sa", Namespace: "op-ns"}
+	cr.Spec.Authentik.ClientSecret = v1alpha1.SecretKeySelector{Name: "nonexistent", Key: "secret"}
+
+	r, c, minter, exchanger := newTestReconciler(t, cr, clientSecret("ns1"))
+
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter <= 0 {
+		t.Errorf("RequeueAfter = %v", res.RequeueAfter)
+	}
+
+	if minter.calls != 2 {
+		t.Fatalf("minter calls = %d, want 2", minter.calls)
+	}
+	if exchanger.calls != 1 {
+		t.Fatalf("exchanger calls = %d, want 1", exchanger.calls)
+	}
+
+	subject := minter.mints[0]
+	if subject.namespace != "ns1" || subject.name != "sa" {
+		t.Errorf("subject mint = %s/%s, want ns1/sa", subject.namespace, subject.name)
+	}
+	if len(subject.audiences) != 1 || subject.audiences[0] != "test-audience" {
+		t.Errorf("subject audiences = %v, want [test-audience]", subject.audiences)
+	}
+
+	assertion := minter.mints[1]
+	if assertion.namespace != "op-ns" || assertion.name != "op-sa" {
+		t.Errorf("assertion mint = %s/%s, want op-ns/op-sa", assertion.namespace, assertion.name)
+	}
+	if len(assertion.audiences) != 1 || assertion.audiences[0] != "client-id" {
+		t.Errorf("assertion audiences = %v, want [client-id]", assertion.audiences)
+	}
+	if assertion.lifetime != assertionLifetime {
+		t.Errorf("assertion lifetime = %v, want %v", assertion.lifetime, assertionLifetime)
+	}
+
+	if exchanger.lastReq == nil || exchanger.lastReq.ClientAssertion != "k8s-sa-token" {
+		t.Errorf("exchange request assertion = %+v", exchanger.lastReq)
+	}
+
+	sec := &corev1.Secret{}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "target"}, sec); err != nil {
+		t.Fatalf("getting secret: %v", err)
+	}
+	if string(sec.Data[SecretKeyToken]) != "authentik-token" {
+		t.Errorf("secret token = %q", sec.Data[SecretKeyToken])
+	}
+}
+
+func TestReconcilePrivateKeyJWTCustomAudience(t *testing.T) {
+	cr := testCR("t1", "ns1")
+	cr.Spec.Authentik.ClientAuthMethod = authentik.ClientAuthPrivateKeyJWT
+	cr.Spec.Authentik.ClientAssertionServiceAccount = &v1alpha1.ServiceAccountRef{Name: "op-sa"}
+	cr.Spec.Authentik.ClientAssertionAudience = "https://authentik.example.com"
+
+	r, _, minter, _ := newTestReconciler(t, cr, clientSecret("ns1"))
+
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if minter.calls != 2 {
+		t.Fatalf("minter calls = %d, want 2", minter.calls)
+	}
+	assertion := minter.mints[1]
+	if assertion.namespace != "ns1" || assertion.name != "op-sa" {
+		t.Errorf("assertion mint = %s/%s, want ns1/op-sa", assertion.namespace, assertion.name)
+	}
+	if len(assertion.audiences) != 1 || assertion.audiences[0] != "https://authentik.example.com" {
+		t.Errorf("assertion audiences = %v", assertion.audiences)
+	}
+}
+
+func TestReconcilePrivateKeyJWTMissingAssertionSA(t *testing.T) {
+	cr := testCR("t1", "ns1")
+	cr.Spec.Authentik.ClientAuthMethod = authentik.ClientAuthPrivateKeyJWT
+
+	r, c, _, exchanger := newTestReconciler(t, cr, clientSecret("ns1"))
+
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.Requeue {
+		t.Error("expected no requeue for invalid spec")
+	}
+	if exchanger.calls != 0 {
+		t.Error("exchange attempted despite invalid spec")
+	}
+
+	ter := &v1alpha1.TokenExchangeRequest{}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "t1"}, ter); err != nil {
+		t.Fatalf("getting CR: %v", err)
+	}
+	cond := meta.FindStatusCondition(ter.Status.Conditions, ConditionReady)
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != ReasonInvalidSpec {
+		t.Errorf("condition = %+v", cond)
 	}
 }
 

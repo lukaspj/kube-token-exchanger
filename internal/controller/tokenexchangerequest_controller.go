@@ -49,6 +49,9 @@ const (
 
 	defaultTokenLifetime = 5 * time.Minute
 	defaultRefreshWindow = 30 * time.Second
+	// assertionLifetime bounds the lifetime of the minted client_assertion
+	// JWT used with private_key_jwt client authentication.
+	assertionLifetime = 2 * time.Minute
 )
 
 // Minter mints bound Kubernetes ServiceAccount tokens.
@@ -148,10 +151,20 @@ func (r *TokenExchangeRequestReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	start := time.Now()
-	resp, err := exchanger.Exchange(ctx, authentik.ExchangeRequest{
+	exchangeReq := authentik.ExchangeRequest{
 		SubjectToken: saToken,
 		Scopes:       ter.Spec.Authentik.Scopes,
-	})
+	}
+
+	if cfg.ClientAuthMethod == authentik.ClientAuthPrivateKeyJWT {
+		assertion, err := r.mintClientAssertion(ctx, &ter, cfg)
+		if err != nil {
+			return r.failExchange(ctx, &ter, fmt.Errorf("minting client assertion: %w", err))
+		}
+		exchangeReq.ClientAssertion = assertion
+	}
+
+	resp, err := exchanger.Exchange(ctx, exchangeReq)
 	metrics.ExchangeDurationSeconds.WithLabelValues(ter.Namespace, ter.Name).Observe(time.Since(start).Seconds())
 	if err != nil {
 		metrics.ExchangesTotal.WithLabelValues(ter.Namespace, ter.Name, "error").Inc()
@@ -222,10 +235,11 @@ func (r *TokenExchangeRequestReconciler) tokenIsFresh(ctx context.Context, names
 
 func (r *TokenExchangeRequestReconciler) authentikConfig(ctx context.Context, ter *v1alpha1.TokenExchangeRequest) (authentik.Config, error) {
 	cfg := authentik.Config{
-		URL:         ter.Spec.Authentik.URL,
-		TokenPath:   ter.Spec.Authentik.TokenEndpointPath,
-		InsecureTLS: ter.Spec.Authentik.InsecureTLS,
-		Timeout:     durationOrDefault(ter.Spec.Authentik.Timeout, 15*time.Second),
+		URL:              ter.Spec.Authentik.URL,
+		TokenPath:        ter.Spec.Authentik.TokenEndpointPath,
+		ClientAuthMethod: ter.Spec.Authentik.ClientAuthMethod,
+		InsecureTLS:      ter.Spec.Authentik.InsecureTLS,
+		Timeout:          durationOrDefault(ter.Spec.Authentik.Timeout, 15*time.Second),
 	}
 
 	clientID, err := r.secretValue(ctx, ter, ter.Spec.Authentik.ClientID)
@@ -234,11 +248,13 @@ func (r *TokenExchangeRequestReconciler) authentikConfig(ctx context.Context, te
 	}
 	cfg.ClientID = clientID
 
-	clientSecret, err := r.secretValue(ctx, ter, ter.Spec.Authentik.ClientSecret)
-	if err != nil {
-		return cfg, err
+	if cfg.ClientAuthMethod != authentik.ClientAuthPrivateKeyJWT {
+		clientSecret, err := r.secretValue(ctx, ter, ter.Spec.Authentik.ClientSecret)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.ClientSecret = clientSecret
 	}
-	cfg.ClientSecret = clientSecret
 
 	if ter.Spec.Authentik.CACert != nil {
 		ca, err := r.secretValue(ctx, ter, *ter.Spec.Authentik.CACert)
@@ -263,8 +279,19 @@ func (r *TokenExchangeRequestReconciler) secretValue(ctx context.Context, ter *v
 	return string(val), nil
 }
 
-func (r *TokenExchangeRequestReconciler) exchanger(ctx context.Context, cfg authentik.Config) (Exchanger, error) {
-	if r.NewAuthentikClient != nil {
+// mintClientAssertion mints the bound ServiceAccount token presented as the
+// client_assertion for private_key_jwt client authentication. The audience
+// defaults to the resolved OAuth2 client ID.
+func (r *TokenExchangeRequestReconciler) mintClientAssertion(ctx context.Context, ter *v1alpha1.TokenExchangeRequest, cfg authentik.Config) (string, error) {
+	sa := ter.Spec.Authentik.ClientAssertionServiceAccount
+	audience := ter.Spec.Authentik.ClientAssertionAudience
+	if audience == "" {
+		audience = cfg.ClientID
+	}
+	return r.Minter.Mint(ctx, namespaceOrDefault(ter.Namespace, sa.Namespace), sa.Name, []string{audience}, assertionLifetime)
+}
+
+func (r *TokenExchangeRequestReconciler) exchanger(ctx context.Context, cfg authentik.Config) (Exchanger, error) {	if r.NewAuthentikClient != nil {
 		return r.NewAuthentikClient(ctx, cfg)
 	}
 	return authentik.New(cfg)
@@ -335,6 +362,15 @@ func validateSpec(ter *v1alpha1.TokenExchangeRequest) error {
 	}
 	if ter.Spec.Authentik.URL == "" {
 		return fmt.Errorf("spec.authentik.url is required")
+	}
+	switch ter.Spec.Authentik.ClientAuthMethod {
+	case "", authentik.ClientAuthClientSecretPost:
+	case authentik.ClientAuthPrivateKeyJWT:
+		if ter.Spec.Authentik.ClientAssertionServiceAccount == nil || ter.Spec.Authentik.ClientAssertionServiceAccount.Name == "" {
+			return fmt.Errorf("spec.authentik.clientAssertionServiceAccount.name is required when clientAuthMethod is privateKeyJwt")
+		}
+	default:
+		return fmt.Errorf("spec.authentik.clientAuthMethod %q is unsupported", ter.Spec.Authentik.ClientAuthMethod)
 	}
 	if ter.Spec.TargetSecret.Name == "" {
 		return fmt.Errorf("spec.targetSecret.name is required")

@@ -1,0 +1,20 @@
+{{- if and .Values.metrics.serviceMonitor.enabled .Values.metrics.service.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "kube-token-exchanger.fullname" . }}
+  namespace: {{ include "kube-token-exchanger.namespace" . }}
+  labels:
+    {{- include "kube-token-exchanger.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "kube-token-exchanger.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      path: /metrics
+{{- end }}

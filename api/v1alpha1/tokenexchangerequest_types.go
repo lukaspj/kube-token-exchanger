@@ -58,7 +58,35 @@ type AuthentikConfig struct {
 	ClientID SecretKeySelector `json:"clientId"`
 
 	// ClientSecret references the OAuth2 client_secret used for the exchange.
+	// Ignored when clientAuthMethod is privateKeyJwt.
 	ClientSecret SecretKeySelector `json:"clientSecret"`
+
+	// ClientAuthMethod selects how the operator authenticates itself to
+	// authentik.
+	//
+	// "clientSecretPost" (default) sends the OAuth2 client_secret in the
+	// token request body.
+	//
+	// "privateKeyJwt" presents a freshly minted Kubernetes ServiceAccount
+	// token as a client_assertion (JWT bearer, RFC 7523) signed by the
+	// Kubernetes API server. authentik must trust the Kubernetes API
+	// server's JWKS. No client_secret is required.
+	// +optional
+	// +kubebuilder:validation:Enum=clientSecretPost;privateKeyJwt
+	// +kubebuilder:default:=clientSecretPost
+	ClientAuthMethod string `json:"clientAuthMethod,omitempty"`
+
+	// ClientAssertionServiceAccount is the ServiceAccount whose bound token
+	// is presented as the client_assertion when clientAuthMethod is
+	// privateKeyJwt. Required in that mode. When Namespace is empty, the
+	// namespace of the TokenExchangeRequest is used.
+	// +optional
+	ClientAssertionServiceAccount *ServiceAccountRef `json:"clientAssertionServiceAccount,omitempty"`
+
+	// ClientAssertionAudience is the audience requested for the client
+	// assertion token. Defaults to the resolved OAuth2 client ID.
+	// +optional
+	ClientAssertionAudience string `json:"clientAssertionAudience,omitempty"`
 
 	// Scopes requested on the exchanged token, e.g. openid, email.
 	// +optional

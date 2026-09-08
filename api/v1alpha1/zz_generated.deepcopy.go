@@ -14,6 +14,11 @@ func (in *AuthentikConfig) DeepCopyInto(out *AuthentikConfig) {
 	*out = *in
 	out.ClientID = in.ClientID
 	out.ClientSecret = in.ClientSecret
+	if in.ClientAssertionServiceAccount != nil {
+		in, out := &in.ClientAssertionServiceAccount, &out.ClientAssertionServiceAccount
+		*out = new(ServiceAccountRef)
+		**out = **in
+	}
 	if in.Scopes != nil {
 		in, out := &in.Scopes, &out.Scopes
 		*out = make([]string, len(*in))

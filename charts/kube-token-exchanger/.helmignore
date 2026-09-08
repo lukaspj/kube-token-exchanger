@@ -1,0 +1,8 @@
+*.tmpl
+.DS_Store
+.git
+.gitignore
+.project
+.idea
+*.swp
+*.tmp
