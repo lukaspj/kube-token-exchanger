@@ -64,16 +64,6 @@ IMG=registry.example.com/kube-token-exchanger:latest make docker-build docker-pu
 ## Usage
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: authentik-oauth2-client
-  namespace: default
-type: Opaque
-stringData:
-  client-id: "<provider client_id>"
-  client-secret: "<provider client_secret>"
----
 apiVersion: tokenexchange.aldershaab-it.dk/v1alpha1
 kind: TokenExchangeRequest
 metadata:
@@ -87,41 +77,16 @@ spec:
   refreshWindow: 30s         # optional, default 30s
   authentik:
     url: https://authentik.example.com
-    clientId:
-      name: authentik-oauth2-client
-      key: client-id
-    clientSecret:
-      name: authentik-oauth2-client
-      key: client-secret
     scopes: [openid, email]
   targetSecret:
     name: my-workload-authentik-token
 ```
 
-### Private key JWT client authentication
-
-Instead of a shared `client_secret`, the operator can authenticate itself to
-authentik with a freshly minted Kubernetes ServiceAccount token presented as a
-`client_assertion` (RFC 7523 JWT bearer). authentik validates it through the
-same Kubernetes API server trust source used for `subject_token` JWTs.
-
-```yaml
-spec:
-  authentik:
-    url: https://authentik.example.com
-    clientId:
-      name: authentik-oauth2-client
-      key: client-id
-    clientAuthMethod: privateKeyJwt
-    clientAssertionServiceAccount:
-      name: token-exchanger            # SA in the operator's namespace
-      namespace: kube-token-exchanger
-    # clientAssertionAudience: client-id  # optional, defaults to the client ID
-```
-
-No `clientSecret` is required in this mode; the field is ignored. The operator
-needs `serviceaccounts/token` create permission on the assertion
-ServiceAccount (already granted cluster-wide by the bundled RBAC).
+The exchange runs as a public client: no `clientId` or `clientSecret` is
+configured on the request. The authentik application performing the RFC 8693
+exchange is provisioned by the cluster admin, so workloads carry no provider
+credentials — their identity comes solely from the Kubernetes ServiceAccount
+token presented as the subject token.
 
 The target Secret contains:
 

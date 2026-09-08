@@ -13,12 +13,6 @@ spec:
   refreshWindow: 30s
   authentik:
     url: https://authentik.central-dev.aldershaab-it.dk
-    clientId:
-      name: authentik-oauth2-client
-      key: client-id
-    clientSecret:
-      name: authentik-oauth2-client
-      key: client-secret
     scopes:
       - openid
       - email

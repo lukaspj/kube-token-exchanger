@@ -82,71 +82,6 @@ spec:
                     - key
                     - name
                     type: object
-                  clientAssertionAudience:
-                    description: |-
-                      ClientAssertionAudience is the audience requested for the client
-                      assertion token. Defaults to the resolved OAuth2 client ID.
-                    type: string
-                  clientAssertionServiceAccount:
-                    description: |-
-                      ClientAssertionServiceAccount is the ServiceAccount whose bound token
-                      is presented as the client_assertion when clientAuthMethod is
-                      privateKeyJwt. Required in that mode. When Namespace is empty, the
-                      namespace of the TokenExchangeRequest is used.
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
-                  clientAuthMethod:
-                    default: clientSecretPost
-                    description: |-
-                      ClientAuthMethod selects how the operator authenticates itself to
-                      authentik.
-
-                      "clientSecretPost" (default) sends the OAuth2 client_secret in the
-                      token request body.
-
-                      "privateKeyJwt" presents a freshly minted Kubernetes ServiceAccount
-                      token as a client_assertion (JWT bearer, RFC 7523) signed by the
-                      Kubernetes API server. authentik must trust the Kubernetes API
-                      server's JWKS. No client_secret is required.
-                    enum:
-                    - clientSecretPost
-                    - privateKeyJwt
-                    type: string
-                  clientId:
-                    description: ClientID references the OAuth2 client_id used for
-                      the exchange.
-                    properties:
-                      key:
-                        type: string
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - key
-                    - name
-                    type: object
-                  clientSecret:
-                    description: |-
-                      ClientSecret references the OAuth2 client_secret used for the exchange.
-                      Ignored when clientAuthMethod is privateKeyJwt.
-                    properties:
-                      key:
-                        type: string
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - key
-                    - name
-                    type: object
                   insecureTLS:
                     description: |-
                       InsecureTLS disables TLS certificate verification. Do not enable in
@@ -173,8 +108,6 @@ spec:
                       https://authentik.example.com.
                     type: string
                 required:
-                - clientId
-                - clientSecret
                 - url
                 type: object
               refreshWindow:

@@ -84,24 +84,12 @@ func testCR(name, namespace string) *v1alpha1.TokenExchangeRequest {
 		Spec: v1alpha1.TokenExchangeRequestSpec{
 			ServiceAccount: v1alpha1.ServiceAccountRef{Name: "sa", Namespace: namespace},
 			Audience:       "test-audience",
-			Authentik: v1alpha1.AuthentikConfig{
-				URL:          "https://authentik.example.com",
-				ClientID:     v1alpha1.SecretKeySelector{Name: "auth", Key: "id"},
-				ClientSecret: v1alpha1.SecretKeySelector{Name: "auth", Key: "secret"},
-				Scopes:       []string{"openid"},
-			},
-			TargetSecret: v1alpha1.SecretRef{Name: "target", Namespace: namespace},
+		Authentik: v1alpha1.AuthentikConfig{
+			URL:    "https://authentik.example.com",
+			Scopes: []string{"openid"},
 		},
-	}
-}
-
-func clientSecret(namespace string) *corev1.Secret {
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: "auth", Namespace: namespace},
-		Data: map[string][]byte{
-			"id":     []byte("client-id"),
-			"secret": []byte("client-secret"),
-		},
+		TargetSecret: v1alpha1.SecretRef{Name: "target", Namespace: namespace},
+	},
 	}
 }
 
@@ -138,7 +126,7 @@ func newTestReconciler(t *testing.T, objs ...client.Object) (*TokenExchangeReque
 }
 
 func TestReconcileIssuesToken(t *testing.T) {
-	r, c, minter, exchanger := newTestReconciler(t, testCR("t1", "ns1"), clientSecret("ns1"))
+	r, c, minter, exchanger := newTestReconciler(t, testCR("t1", "ns1"))
 
 	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
 	if err != nil {
@@ -192,7 +180,7 @@ func TestReconcileSkipsWhenFresh(t *testing.T) {
 		},
 	}
 
-	r, _, minter, exchanger := newTestReconciler(t, cr, clientSecret("ns1"), existing)
+	r, _, minter, exchanger := newTestReconciler(t, cr, existing)
 
 	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
 	if err != nil {
@@ -216,7 +204,7 @@ func TestReconcileRotatesExpired(t *testing.T) {
 		},
 	}
 
-	r, c, minter, exchanger := newTestReconciler(t, cr, clientSecret("ns1"), existing)
+	r, c, minter, exchanger := newTestReconciler(t, cr, existing)
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
@@ -235,7 +223,7 @@ func TestReconcileRotatesExpired(t *testing.T) {
 }
 
 func TestReconcileExchangeFailure(t *testing.T) {
-	r, c, _, exchanger := newTestReconciler(t, testCR("t1", "ns1"), clientSecret("ns1"))
+	r, c, _, exchanger := newTestReconciler(t, testCR("t1", "ns1"))
 	exchanger.err = errors.New("authentik: token exchange rejected: invalid_grant")
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}}); err == nil {
@@ -256,7 +244,7 @@ func TestReconcileInvalidSpec(t *testing.T) {
 	cr := testCR("t1", "ns1")
 	cr.Spec.Audience = ""
 
-	r, c, _, _ := newTestReconciler(t, cr, clientSecret("ns1"))
+	r, c, _, _ := newTestReconciler(t, cr)
 
 	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
 	if err != nil {
@@ -264,30 +252,6 @@ func TestReconcileInvalidSpec(t *testing.T) {
 	}
 	if res.Requeue {
 		t.Error("expected no requeue for invalid spec")
-	}
-
-	ter := &v1alpha1.TokenExchangeRequest{}
-	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "t1"}, ter); err != nil {
-		t.Fatalf("getting CR: %v", err)
-	}
-	cond := meta.FindStatusCondition(ter.Status.Conditions, ConditionReady)
-	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != ReasonInvalidSpec {
-		t.Errorf("condition = %+v", cond)
-	}
-}
-
-func TestReconcileMissingClientSecret(t *testing.T) {
-	r, c, _, exchanger := newTestReconciler(t, testCR("t1", "ns1"))
-
-	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if res.Requeue {
-		t.Error("expected no requeue")
-	}
-	if exchanger.calls != 0 {
-		t.Error("exchange attempted despite missing secret")
 	}
 
 	ter := &v1alpha1.TokenExchangeRequest{}
@@ -301,116 +265,11 @@ func TestReconcileMissingClientSecret(t *testing.T) {
 }
 
 func TestReconcileMintFailure(t *testing.T) {
-	r, _, _, _ := newTestReconciler(t, testCR("t1", "ns1"), clientSecret("ns1"))
+	r, _, _, _ := newTestReconciler(t, testCR("t1", "ns1"))
 	r.Minter = &fakeMinter{err: errors.New("forbidden")}
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}}); err == nil {
 		t.Fatal("expected error")
-	}
-}
-
-func TestReconcilePrivateKeyJWT(t *testing.T) {
-	cr := testCR("t1", "ns1")
-	cr.Spec.Authentik.ClientAuthMethod = authentik.ClientAuthPrivateKeyJWT
-	cr.Spec.Authentik.ClientAssertionServiceAccount = &v1alpha1.ServiceAccountRef{Name: "op-sa", Namespace: "op-ns"}
-	cr.Spec.Authentik.ClientSecret = v1alpha1.SecretKeySelector{Name: "nonexistent", Key: "secret"}
-
-	r, c, minter, exchanger := newTestReconciler(t, cr, clientSecret("ns1"))
-
-	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if res.RequeueAfter <= 0 {
-		t.Errorf("RequeueAfter = %v", res.RequeueAfter)
-	}
-
-	if minter.calls != 2 {
-		t.Fatalf("minter calls = %d, want 2", minter.calls)
-	}
-	if exchanger.calls != 1 {
-		t.Fatalf("exchanger calls = %d, want 1", exchanger.calls)
-	}
-
-	subject := minter.mints[0]
-	if subject.namespace != "ns1" || subject.name != "sa" {
-		t.Errorf("subject mint = %s/%s, want ns1/sa", subject.namespace, subject.name)
-	}
-	if len(subject.audiences) != 1 || subject.audiences[0] != "test-audience" {
-		t.Errorf("subject audiences = %v, want [test-audience]", subject.audiences)
-	}
-
-	assertion := minter.mints[1]
-	if assertion.namespace != "op-ns" || assertion.name != "op-sa" {
-		t.Errorf("assertion mint = %s/%s, want op-ns/op-sa", assertion.namespace, assertion.name)
-	}
-	if len(assertion.audiences) != 1 || assertion.audiences[0] != "client-id" {
-		t.Errorf("assertion audiences = %v, want [client-id]", assertion.audiences)
-	}
-	if assertion.lifetime != assertionLifetime {
-		t.Errorf("assertion lifetime = %v, want %v", assertion.lifetime, assertionLifetime)
-	}
-
-	if exchanger.lastReq == nil || exchanger.lastReq.ClientAssertion != "k8s-sa-token" {
-		t.Errorf("exchange request assertion = %+v", exchanger.lastReq)
-	}
-
-	sec := &corev1.Secret{}
-	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "target"}, sec); err != nil {
-		t.Fatalf("getting secret: %v", err)
-	}
-	if string(sec.Data[SecretKeyToken]) != "authentik-token" {
-		t.Errorf("secret token = %q", sec.Data[SecretKeyToken])
-	}
-}
-
-func TestReconcilePrivateKeyJWTCustomAudience(t *testing.T) {
-	cr := testCR("t1", "ns1")
-	cr.Spec.Authentik.ClientAuthMethod = authentik.ClientAuthPrivateKeyJWT
-	cr.Spec.Authentik.ClientAssertionServiceAccount = &v1alpha1.ServiceAccountRef{Name: "op-sa"}
-	cr.Spec.Authentik.ClientAssertionAudience = "https://authentik.example.com"
-
-	r, _, minter, _ := newTestReconciler(t, cr, clientSecret("ns1"))
-
-	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}}); err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if minter.calls != 2 {
-		t.Fatalf("minter calls = %d, want 2", minter.calls)
-	}
-	assertion := minter.mints[1]
-	if assertion.namespace != "ns1" || assertion.name != "op-sa" {
-		t.Errorf("assertion mint = %s/%s, want ns1/op-sa", assertion.namespace, assertion.name)
-	}
-	if len(assertion.audiences) != 1 || assertion.audiences[0] != "https://authentik.example.com" {
-		t.Errorf("assertion audiences = %v", assertion.audiences)
-	}
-}
-
-func TestReconcilePrivateKeyJWTMissingAssertionSA(t *testing.T) {
-	cr := testCR("t1", "ns1")
-	cr.Spec.Authentik.ClientAuthMethod = authentik.ClientAuthPrivateKeyJWT
-
-	r, c, _, exchanger := newTestReconciler(t, cr, clientSecret("ns1"))
-
-	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "t1"}})
-	if err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-	if res.Requeue {
-		t.Error("expected no requeue for invalid spec")
-	}
-	if exchanger.calls != 0 {
-		t.Error("exchange attempted despite invalid spec")
-	}
-
-	ter := &v1alpha1.TokenExchangeRequest{}
-	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "t1"}, ter); err != nil {
-		t.Fatalf("getting CR: %v", err)
-	}
-	cond := meta.FindStatusCondition(ter.Status.Conditions, ConditionReady)
-	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != ReasonInvalidSpec {
-		t.Errorf("condition = %+v", cond)
 	}
 }
 

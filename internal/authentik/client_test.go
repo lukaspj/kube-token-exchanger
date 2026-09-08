@@ -53,10 +53,8 @@ func newTestClient(t *testing.T, handler func(req *http.Request) *http.Response)
 	t.Helper()
 	ft := &fakeTransport{t: t, handler: handler}
 	client, err := New(Config{
-		URL:          "https://authentik.example.com",
-		ClientID:     "cid",
-		ClientSecret: "csec",
-		HTTPClient:   &http.Client{Transport: ft},
+		URL:        "https://authentik.example.com",
+		HTTPClient: &http.Client{Transport: ft},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -91,8 +89,6 @@ func TestExchangeSuccess(t *testing.T) {
 
 	want := map[string]string{
 		"grant_type":         GrantTypeTokenExchange,
-		"client_id":          "cid",
-		"client_secret":      "csec",
 		"subject_token":      "k8s-sa-jwt",
 		"subject_token_type": TokenTypeJWT,
 		"scope":              "openid email",
@@ -100,6 +96,11 @@ func TestExchangeSuccess(t *testing.T) {
 	for k, v := range want {
 		if got := ft.lastForm.Get(k); got != v {
 			t.Errorf("form field %s = %q, want %q", k, got, v)
+		}
+	}
+	for _, k := range []string{"client_id", "client_secret", "client_assertion"} {
+		if _, ok := ft.lastForm[k]; ok {
+			t.Errorf("form field %s must not be sent", k)
 		}
 	}
 
@@ -152,15 +153,8 @@ func TestExchangeHTTPError(t *testing.T) {
 }
 
 func TestNewValidation(t *testing.T) {
-	cases := []Config{
-		{URL: "", ClientID: "cid", ClientSecret: "sec"},
-		{URL: "http://x", ClientID: "", ClientSecret: "sec"},
-		{URL: "http://x", ClientID: "cid", ClientSecret: ""},
-	}
-	for _, cfg := range cases {
-		if _, err := New(cfg); err == nil {
-			t.Errorf("New(%+v) expected error", cfg)
-		}
+	if _, err := New(Config{URL: ""}); err == nil {
+		t.Error("New without URL expected error")
 	}
 }
 
@@ -195,78 +189,5 @@ func TestExchangeEmptySubject(t *testing.T) {
 	client, _ := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at"}`))
 	if _, err := client.Exchange(context.Background(), ExchangeRequest{}); err == nil {
 		t.Fatal("expected error for empty subject token")
-	}
-}
-
-func newPrivateKeyJWTClient(t *testing.T, handler func(req *http.Request) *http.Response) (*Client, *fakeTransport) {
-	t.Helper()
-	ft := &fakeTransport{t: t, handler: handler}
-	client, err := New(Config{
-		URL:              "https://authentik.example.com",
-		ClientID:         "cid",
-		ClientAuthMethod: ClientAuthPrivateKeyJWT,
-		HTTPClient:       &http.Client{Transport: ft},
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	return client, ft
-}
-
-func TestExchangePrivateKeyJWT(t *testing.T) {
-	client, ft := newPrivateKeyJWTClient(t, jsonResponse(http.StatusOK, `{"access_token": "at", "expires_in": 60}`))
-
-	resp, err := client.Exchange(context.Background(), ExchangeRequest{
-		SubjectToken:    "k8s-sa-jwt",
-		ClientAssertion: "assertion-jwt",
-		Scopes:          []string{"openid"},
-	})
-	if err != nil {
-		t.Fatalf("Exchange: %v", err)
-	}
-	if resp.AccessToken != "at" {
-		t.Errorf("access token = %q", resp.AccessToken)
-	}
-
-	want := map[string]string{
-		"grant_type":            GrantTypeTokenExchange,
-		"client_id":             "cid",
-		"client_assertion_type": ClientAssertionTypeJWTBearer,
-		"client_assertion":      "assertion-jwt",
-		"subject_token":         "k8s-sa-jwt",
-		"subject_token_type":    TokenTypeJWT,
-		"scope":                 "openid",
-	}
-	for k, v := range want {
-		if got := ft.lastForm.Get(k); got != v {
-			t.Errorf("form field %s = %q, want %q", k, got, v)
-		}
-	}
-	if _, ok := ft.lastForm["client_secret"]; ok {
-		t.Error("client_secret must not be sent with privateKeyJwt")
-	}
-}
-
-func TestExchangePrivateKeyJWTMissingAssertion(t *testing.T) {
-	client, _ := newPrivateKeyJWTClient(t, jsonResponse(http.StatusOK, `{"access_token": "at"}`))
-	if _, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"}); err == nil {
-		t.Fatal("expected error for missing client assertion")
-	}
-}
-
-func TestNewPrivateKeyJWTValidation(t *testing.T) {
-	cfg := Config{URL: "http://x", ClientID: "cid", ClientAuthMethod: ClientAuthPrivateKeyJWT}
-	if _, err := New(cfg); err != nil {
-		t.Errorf("New(%+v): %v, want no error without client secret", cfg, err)
-	}
-
-	cases := []Config{
-		{URL: "http://x", ClientID: "", ClientAuthMethod: ClientAuthPrivateKeyJWT},
-		{URL: "http://x", ClientID: "cid", ClientAuthMethod: "unsupported"},
-	}
-	for _, c := range cases {
-		if _, err := New(c); err == nil {
-			t.Errorf("New(%+v) expected error", c)
-		}
 	}
 }
