@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/laldershaab/kube-token-exchanger/api/v1alpha1"
-	"github.com/laldershaab/kube-token-exchanger/internal/authentik"
+	"github.com/lukaspj/kube-token-exchanger/api/v1alpha1"
+	"github.com/lukaspj/kube-token-exchanger/internal/authentik"
 )
 
 type mintCall struct {

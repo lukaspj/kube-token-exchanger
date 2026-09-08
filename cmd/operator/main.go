@@ -16,10 +16,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	tokenexchangev1alpha1 "github.com/laldershaab/kube-token-exchanger/api/v1alpha1"
-	"github.com/laldershaab/kube-token-exchanger/internal/controller"
-	internalKubernetes "github.com/laldershaab/kube-token-exchanger/internal/kubernetes"
-	_ "github.com/laldershaab/kube-token-exchanger/internal/metrics"
+	tokenexchangev1alpha1 "github.com/lukaspj/kube-token-exchanger/api/v1alpha1"
+	"github.com/lukaspj/kube-token-exchanger/internal/controller"
+	internalKubernetes "github.com/lukaspj/kube-token-exchanger/internal/kubernetes"
+	_ "github.com/lukaspj/kube-token-exchanger/internal/metrics"
 )
 
 var (

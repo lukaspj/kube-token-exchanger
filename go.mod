@@ -1,4 +1,4 @@
-module github.com/laldershaab/kube-token-exchanger
+module github.com/lukaspj/kube-token-exchanger
 
 go 1.26.4
 

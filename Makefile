@@ -1,4 +1,4 @@
-IMG ?= ghcr.io/laldershaab/kube-token-exchanger:latest
+IMG ?= ghcr.io/lukaspj/kube-token-exchanger:latest
 
 .PHONY: generate
 generate:

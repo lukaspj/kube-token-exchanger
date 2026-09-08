@@ -4,11 +4,11 @@ description: An operator that exchanges Kubernetes ServiceAccount identity token
 type: application
 version: 0.1.0
 appVersion: "latest"
-home: https://github.com/laldershaab/kube-token-exchanger
+home: https://github.com/lukaspj/kube-token-exchanger
 keywords:
   - authentik
   - token-exchange
   - rfc8693
   - operator
 sources:
-  - https://github.com/laldershaab/kube-token-exchanger
+  - https://github.com/lukaspj/kube-token-exchanger

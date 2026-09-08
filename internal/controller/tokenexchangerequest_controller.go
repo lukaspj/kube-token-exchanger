@@ -16,9 +16,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/laldershaab/kube-token-exchanger/api/v1alpha1"
-	"github.com/laldershaab/kube-token-exchanger/internal/authentik"
-	"github.com/laldershaab/kube-token-exchanger/internal/metrics"
+	"github.com/lukaspj/kube-token-exchanger/api/v1alpha1"
+	"github.com/lukaspj/kube-token-exchanger/internal/authentik"
+	"github.com/lukaspj/kube-token-exchanger/internal/metrics"
 )
 
 const (
@@ -291,7 +291,8 @@ func (r *TokenExchangeRequestReconciler) mintClientAssertion(ctx context.Context
 	return r.Minter.Mint(ctx, namespaceOrDefault(ter.Namespace, sa.Namespace), sa.Name, []string{audience}, assertionLifetime)
 }
 
-func (r *TokenExchangeRequestReconciler) exchanger(ctx context.Context, cfg authentik.Config) (Exchanger, error) {	if r.NewAuthentikClient != nil {
+func (r *TokenExchangeRequestReconciler) exchanger(ctx context.Context, cfg authentik.Config) (Exchanger, error) {
+	if r.NewAuthentikClient != nil {
 		return r.NewAuthentikClient(ctx, cfg)
 	}
 	return authentik.New(cfg)
@@ -308,12 +309,12 @@ func (r *TokenExchangeRequestReconciler) writeSecret(ctx context.Context, ter *v
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
-			SecretKeyToken:                  []byte(resp.AccessToken),
-			SecretKeyExpiresAt:              []byte(expiry.Format(time.RFC3339)),
-			SecretKeyScope:                  []byte(resp.Scope),
-			SecretKeyIssuedTokenType:        []byte(resp.IssuedTokenType),
-			SecretKeyAudience:               []byte(ter.Spec.Audience),
-			SecretKeyServiceAccount:         []byte(ter.Spec.ServiceAccount.Name),
+			SecretKeyToken:                   []byte(resp.AccessToken),
+			SecretKeyExpiresAt:               []byte(expiry.Format(time.RFC3339)),
+			SecretKeyScope:                   []byte(resp.Scope),
+			SecretKeyIssuedTokenType:         []byte(resp.IssuedTokenType),
+			SecretKeyAudience:                []byte(ter.Spec.Audience),
+			SecretKeyServiceAccount:          []byte(ter.Spec.ServiceAccount.Name),
 			SecretKeyServiceAccountNamespace: []byte(saNamespace),
 		},
 	}

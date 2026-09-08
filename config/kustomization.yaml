@@ -11,5 +11,5 @@ resources:
   - deployment/service.yaml
 
 images:
-  - name: ghcr.io/laldershaab/kube-token-exchanger
+  - name: ghcr.io/lukaspj/kube-token-exchanger
     newTag: latest

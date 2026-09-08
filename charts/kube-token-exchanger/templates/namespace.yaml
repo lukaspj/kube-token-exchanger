@@ -1,8 +1,0 @@
-{{- if .Values.namespace.create }}
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ include "kube-token-exchanger.namespace" . }}
-  labels:
-    {{- include "kube-token-exchanger.labels" . | nindent 4 }}
-{{- end }}

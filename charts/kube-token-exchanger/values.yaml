@@ -3,13 +3,8 @@
 # -- Overrides the full name of chart resources.
 fullnameOverride: ""
 
-# -- Namespace the operator is deployed into. Created when namespace.create is true.
-namespace:
-  create: true
-  name: kube-token-exchanger
-
 image:
-  repository: ghcr.io/laldershaab/kube-token-exchanger
+  repository: ghcr.io/lukaspj/kube-token-exchanger
   # -- Image tag. Defaults to the chart appVersion.
   tag: ""
   pullPolicy: IfNotPresent
