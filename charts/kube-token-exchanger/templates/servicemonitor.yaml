@@ -3,7 +3,6 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "kube-token-exchanger.fullname" . }}
-  namespace: {{ include "kube-token-exchanger.namespace" . }}
   labels:
     {{- include "kube-token-exchanger.labels" . | nindent 4 }}
     {{- with .Values.metrics.serviceMonitor.additionalLabels }}

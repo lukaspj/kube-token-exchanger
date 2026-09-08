@@ -12,5 +12,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ include "kube-token-exchanger.serviceAccountName" . }}
-    namespace: {{ include "kube-token-exchanger.namespace" . }}
+    namespace: {{ .Release.Namespace }}
 {{- end }}

@@ -52,10 +52,3 @@ Name of the ServiceAccount to use.
 {{- define "kube-token-exchanger.serviceAccountName" -}}
 {{- include "kube-token-exchanger.fullname" . }}
 {{- end }}
-
-{{/*
-Target namespace of the operator.
-*/}}
-{{- define "kube-token-exchanger.namespace" -}}
-{{- default (default "kube-token-exchanger" .Values.namespace.name) .Release.Namespace }}
-{{- end }}
