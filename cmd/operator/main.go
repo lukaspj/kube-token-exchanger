@@ -64,6 +64,8 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
 	if authentikURL == "" {
 		setupLog.Error(nil, "--authentik-url is required")
 		os.Exit(1)
@@ -91,8 +93,6 @@ func main() {
 		}
 		authentikConfig.CACert = ca
 	}
-
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
