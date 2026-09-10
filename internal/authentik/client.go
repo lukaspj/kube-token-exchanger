@@ -30,14 +30,20 @@ const (
 
 // Config holds the connection settings for the authentik token endpoint.
 type Config struct {
-	URL         string
-	TokenPath   string
+	URL          string
+	TokenPath    string
 	// Scopes are the default OAuth2 scopes requested on exchanged tokens.
-	Scopes      []string
-	Timeout     time.Duration
-	InsecureTLS bool
-	CACert      []byte
-	HTTPClient  *http.Client
+	Scopes       []string
+	// ClientID identifies the OAuth2 client performing the exchange. When
+	// set with ClientSecret, credentials are sent as HTTP Basic auth;
+	// without a secret the client is treated as public and only client_id
+	// is sent in the form body.
+	ClientID     string
+	ClientSecret string
+	Timeout      time.Duration
+	InsecureTLS  bool
+	CACert       []byte
+	HTTPClient   *http.Client
 }
 
 // ExchangeRequest is a token exchange request.
@@ -153,6 +159,18 @@ func (c *Client) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeRe
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("Accept", "application/json")
+
+	if c.cfg.ClientID != "" {
+		if c.cfg.ClientSecret != "" {
+			httpReq.SetBasicAuth(c.cfg.ClientID, c.cfg.ClientSecret)
+		} else {
+			form.Set("client_id", c.cfg.ClientID)
+			httpReq.Body = io.NopCloser(strings.NewReader(form.Encode()))
+			httpReq.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader(form.Encode())), nil
+			}
+		}
+	}
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {

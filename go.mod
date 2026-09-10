@@ -3,6 +3,7 @@ module github.com/lukaspj/kube-token-exchanger
 go 1.26.4
 
 require (
+	github.com/go-logr/logr v1.4.3
 	github.com/prometheus/client_golang v1.24.1
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
@@ -20,7 +21,6 @@ require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/go-openapi/jsonreference v1.0.0 // indirect

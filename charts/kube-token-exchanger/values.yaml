@@ -32,6 +32,19 @@ authentik:
   timeout: 15s
   # -- Disable TLS certificate verification. Do not use in production.
   insecureTLS: false
+  # -- OAuth2 client ID used to authenticate the token exchange against
+  # authentik. Required by authentik on the token endpoint.
+  clientID: ""
+  # -- Plain client secret. Prefer clientSecretSecret in production.
+  clientSecret: ""
+  # -- Optional: mount a Secret holding the OAuth2 client secret.
+  clientSecretSecret:
+    # -- Name of the Secret (leave empty to disable).
+    name: ""
+    # -- Key in the Secret holding the client secret.
+    key: "client-secret"
+    # -- Optional: continue startup if the Secret is missing.
+    optional: false
   # -- Optional: mount a Secret holding a PEM certificate authority used to
   # verify the authentik TLS certificate.
   caCertSecret:

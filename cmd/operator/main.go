@@ -5,17 +5,18 @@ package main
 
 import (
 	"flag"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	tokenexchangev1alpha1 "github.com/lukaspj/kube-token-exchanger/api/v1alpha1"
@@ -42,6 +43,9 @@ func main() {
 	var authentikURL string
 	var authentikScopes string
 	var authentikTokenPath string
+	var authentikClientID string
+	var authentikClientSecret string
+	var authentikClientSecretFile string
 	var authentikTimeout time.Duration
 	var authentikInsecureTLS bool
 	var authentikCACertFile string
@@ -60,11 +64,29 @@ func main() {
 		"Disable TLS certificate verification against authentik. Do not use in production.")
 	flag.StringVar(&authentikCACertFile, "authentik-ca-cert", "",
 		"Path to a PEM file with the certificate authority used to verify the authentik TLS certificate.")
-	opts := zap.Options{Development: true}
-	opts.BindFlags(flag.CommandLine)
+	flag.StringVar(&authentikClientID, "authentik-client-id", "",
+		"OAuth2 client ID used to authenticate the token exchange against authentik.")
+	flag.StringVar(&authentikClientSecret, "authentik-client-secret", "",
+		"OAuth2 client secret for confidential clients. Prefer --authentik-client-secret-file.")
+	flag.StringVar(&authentikClientSecretFile, "authentik-client-secret-file", "",
+		"Path to a file containing the OAuth2 client secret (e.g. a mounted Secret). Overrides --authentik-client-secret.")
+	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error).")
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	var level slog.Level
+	switch strings.ToLower(*logLevel) {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	slogger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	ctrl.SetLogger(logr.FromSlogHandler(slogger.Handler()))
 
 	if authentikURL == "" {
 		setupLog.Error(nil, "--authentik-url is required")
@@ -79,11 +101,22 @@ func main() {
 	}
 
 	authentikConfig := authentik.Config{
-		URL:         authentikURL,
-		TokenPath:   authentikTokenPath,
-		Scopes:      authentikScopesList,
-		Timeout:     authentikTimeout,
-		InsecureTLS: authentikInsecureTLS,
+		URL:          authentikURL,
+		TokenPath:    authentikTokenPath,
+		Scopes:       authentikScopesList,
+		ClientID:     authentikClientID,
+		Timeout:      authentikTimeout,
+		InsecureTLS:  authentikInsecureTLS,
+	}
+	if authentikClientSecretFile != "" {
+		secret, err := os.ReadFile(authentikClientSecretFile)
+		if err != nil {
+			setupLog.Error(err, "unable to read --authentik-client-secret-file", "path", authentikClientSecretFile)
+			os.Exit(1)
+		}
+		authentikConfig.ClientSecret = strings.TrimSpace(string(secret))
+	} else if authentikClientSecret != "" {
+		authentikConfig.ClientSecret = authentikClientSecret
 	}
 	if authentikCACertFile != "" {
 		ca, err := os.ReadFile(authentikCACertFile)

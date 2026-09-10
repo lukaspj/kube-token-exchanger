@@ -121,6 +121,43 @@ func TestExchangeSuccess(t *testing.T) {
 	}
 }
 
+func TestExchangeClientAuthBasic(t *testing.T) {
+	client, ft := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at", "expires_in": 60}`))
+	client.cfg.ClientID = "my-app"
+	client.cfg.ClientSecret = "s3cret"
+
+	if _, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"}); err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+
+	user, pass, ok := ft.lastReq.BasicAuth()
+	if !ok || user != "my-app" || pass != "s3cret" {
+		t.Errorf("basic auth = %q/%q, ok=%v, want my-app/s3cret", user, pass, ok)
+	}
+	if _, ok := ft.lastForm["client_id"]; ok {
+		t.Error("client_id must not be in form body when Basic auth is used")
+	}
+}
+
+func TestExchangeClientAuthPublic(t *testing.T) {
+	client, ft := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at", "expires_in": 60}`))
+	client.cfg.ClientID = "my-public-app"
+
+	if _, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"}); err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+
+	if got := ft.lastForm.Get("client_id"); got != "my-public-app" {
+		t.Errorf("form client_id = %q, want my-public-app", got)
+	}
+	if _, _, ok := ft.lastReq.BasicAuth(); ok {
+		t.Error("basic auth must not be sent for public clients")
+	}
+	if _, ok := ft.lastForm["client_secret"]; ok {
+		t.Error("client_secret must not be sent")
+	}
+}
+
 func TestExchangeOAuthError(t *testing.T) {
 	client, _ := newTestClient(t, jsonResponse(http.StatusBadRequest,
 		`{"error": "invalid_grant", "error_description": "token not trusted"}`))
