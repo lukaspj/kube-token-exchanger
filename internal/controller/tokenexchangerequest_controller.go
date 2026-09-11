@@ -145,7 +145,7 @@ func (r *TokenExchangeRequestReconciler) Reconcile(ctx context.Context, req ctrl
 
 	start := time.Now()
 	exchangeReq := authentik.ExchangeRequest{
-		SubjectToken: saToken,
+		ClientAssertion: saToken,
 	}
 
 	resp, err := exchanger.Exchange(ctx, exchangeReq)

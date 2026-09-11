@@ -54,6 +54,7 @@ func newTestClient(t *testing.T, handler func(req *http.Request) *http.Response)
 	ft := &fakeTransport{t: t, handler: handler}
 	client, err := New(Config{
 		URL:        "https://authentik.example.com",
+		ClientID:   "my-app",
 		HTTPClient: &http.Client{Transport: ft},
 	})
 	if err != nil {
@@ -67,14 +68,13 @@ func TestExchangeSuccess(t *testing.T) {
 		"access_token": "authentik.jwt.token",
 		"token_type": "Bearer",
 		"expires_in": 3600,
-		"scope": "openid email",
-		"issued_token_type": "urn:ietf:params:oauth:token-type:access_token"
+		"scope": "openid email"
 	}`))
 
 	now := time.Now()
 	resp, err := client.Exchange(context.Background(), ExchangeRequest{
-		SubjectToken: "k8s-sa-jwt",
-		Scopes:       []string{"openid", "email"},
+		ClientAssertion: "k8s-sa-jwt",
+		Scopes:          []string{"openid", "email"},
 	})
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -88,20 +88,24 @@ func TestExchangeSuccess(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"grant_type":         GrantTypeTokenExchange,
-		"subject_token":      "k8s-sa-jwt",
-		"subject_token_type": TokenTypeJWT,
-		"scope":              "openid email",
+		"grant_type":            GrantTypeClientCredentials,
+		"client_id":             "my-app",
+		"client_assertion_type": ClientAssertionTypeJWTBearer,
+		"client_assertion":      "k8s-sa-jwt",
+		"scope":                 "openid email",
 	}
 	for k, v := range want {
 		if got := ft.lastForm.Get(k); got != v {
 			t.Errorf("form field %s = %q, want %q", k, got, v)
 		}
 	}
-	for _, k := range []string{"client_id", "client_secret", "client_assertion"} {
+	for _, k := range []string{"client_secret", "subject_token", "subject_token_type"} {
 		if _, ok := ft.lastForm[k]; ok {
 			t.Errorf("form field %s must not be sent", k)
 		}
+	}
+	if _, _, ok := ft.lastReq.BasicAuth(); ok {
+		t.Error("basic auth must not be sent")
 	}
 
 	if resp.AccessToken != "authentik.jwt.token" {
@@ -111,62 +115,61 @@ func TestExchangeSuccess(t *testing.T) {
 		t.Errorf("token type = %q", resp.TokenType)
 	}
 	if resp.ExpiresIn != 3600 {
-		t.Errorf("expires_in = %d", resp.ExpiresIn)
+		t.Errorf("expires in = %d", resp.ExpiresIn)
 	}
-	if !resp.Expiry(now).Equal(now.Add(3600 * time.Second)) {
-		t.Errorf("expiry = %v, want %v", resp.Expiry(now), now.Add(3600*time.Second))
+	if resp.Scope != "openid email" {
+		t.Errorf("scope = %q", resp.Scope)
 	}
-	if resp.IssuedTokenType != "urn:ietf:params:oauth:token-type:access_token" {
-		t.Errorf("issued token type = %q", resp.IssuedTokenType)
-	}
-}
-
-func TestExchangeClientAuthBasic(t *testing.T) {
-	client, ft := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at", "expires_in": 60}`))
-	client.cfg.ClientID = "my-app"
-	client.cfg.ClientSecret = "s3cret"
-
-	if _, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"}); err != nil {
-		t.Fatalf("Exchange: %v", err)
-	}
-
-	user, pass, ok := ft.lastReq.BasicAuth()
-	if !ok || user != "my-app" || pass != "s3cret" {
-		t.Errorf("basic auth = %q/%q, ok=%v, want my-app/s3cret", user, pass, ok)
-	}
-	if _, ok := ft.lastForm["client_id"]; ok {
-		t.Error("client_id must not be in form body when Basic auth is used")
+	expiry := resp.Expiry(now)
+	if expiry.Sub(now) != 3600*time.Second {
+		t.Errorf("expiry delta = %v, want 3600s", expiry.Sub(now))
 	}
 }
 
-func TestExchangeClientAuthPublic(t *testing.T) {
+func TestExchangeClientIDFromConfig(t *testing.T) {
 	client, ft := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at", "expires_in": 60}`))
-	client.cfg.ClientID = "my-public-app"
 
-	if _, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"}); err != nil {
+	if _, err := client.Exchange(context.Background(), ExchangeRequest{ClientAssertion: "jwt"}); err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
 
-	if got := ft.lastForm.Get("client_id"); got != "my-public-app" {
-		t.Errorf("form client_id = %q, want my-public-app", got)
+	if got := ft.lastForm.Get("client_id"); got != "my-app" {
+		t.Errorf("form client_id = %q, want my-app", got)
 	}
 	if _, _, ok := ft.lastReq.BasicAuth(); ok {
-		t.Error("basic auth must not be sent for public clients")
+		t.Error("basic auth must not be sent")
 	}
 	if _, ok := ft.lastForm["client_secret"]; ok {
 		t.Error("client_secret must not be sent")
 	}
 }
 
+func TestExchangeMissingClientID(t *testing.T) {
+	client, _ := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at"}`))
+	client.cfg.ClientID = ""
+
+	if _, err := client.Exchange(context.Background(), ExchangeRequest{ClientAssertion: "jwt"}); err == nil {
+		t.Fatal("expected error for missing client ID")
+	}
+}
+
+func TestExchangeMissingAssertion(t *testing.T) {
+	client, _ := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at"}`))
+
+	if _, err := client.Exchange(context.Background(), ExchangeRequest{}); err == nil {
+		t.Fatal("expected error for missing client assertion")
+	}
+}
+
 func TestExchangeOAuthError(t *testing.T) {
 	client, _ := newTestClient(t, jsonResponse(http.StatusBadRequest,
-		`{"error": "invalid_grant", "error_description": "token not trusted"}`))
+		`{"error": "invalid_client", "error_description": "JWT not trusted"}`))
 
-	_, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"})
+	_, err := client.Exchange(context.Background(), ExchangeRequest{ClientAssertion: "jwt"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "invalid_grant") || !strings.Contains(err.Error(), "token not trusted") {
+	if !strings.Contains(err.Error(), "invalid_client") || !strings.Contains(err.Error(), "JWT not trusted") {
 		t.Errorf("error = %v", err)
 	}
 }
@@ -180,7 +183,7 @@ func TestExchangeHTTPError(t *testing.T) {
 		}
 	})
 
-	_, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"})
+	_, err := client.Exchange(context.Background(), ExchangeRequest{ClientAssertion: "jwt"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -200,7 +203,7 @@ func TestCustomTokenPath(t *testing.T) {
 	client.cfg.TokenPath = "/custom/token"
 	client.token = "https://authentik.example.com/custom/token"
 
-	if _, err := client.Exchange(context.Background(), ExchangeRequest{SubjectToken: "jwt"}); err != nil {
+	if _, err := client.Exchange(context.Background(), ExchangeRequest{ClientAssertion: "jwt"}); err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
 	if ft.lastReq.URL.Path != "/custom/token" {
@@ -212,19 +215,12 @@ func TestScopeEncoding(t *testing.T) {
 	client, ft := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at", "expires_in": 60}`))
 
 	if _, err := client.Exchange(context.Background(), ExchangeRequest{
-		SubjectToken: "jwt",
-		Scopes:       []string{"openid", "profile"},
+		ClientAssertion: "jwt",
+		Scopes:          []string{"openid", "profile"},
 	}); err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
 	if ft.lastForm.Get("scope") != "openid profile" {
 		t.Errorf("scope = %q", ft.lastForm.Get("scope"))
-	}
-}
-
-func TestExchangeEmptySubject(t *testing.T) {
-	client, _ := newTestClient(t, jsonResponse(http.StatusOK, `{"access_token": "at"}`))
-	if _, err := client.Exchange(context.Background(), ExchangeRequest{}); err == nil {
-		t.Fatal("expected error for empty subject token")
 	}
 }

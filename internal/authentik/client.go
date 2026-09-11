@@ -1,5 +1,6 @@
-// Package authentik implements a client for authentik's RFC 8693 OAuth2
-// token exchange endpoint.
+// Package authentik implements a client for authentik's OAuth2 token
+// endpoint. It authenticates using the client_credentials grant with a JWT
+// client assertion (RFC 7523), so no client secret is required.
 package authentik
 
 import (
@@ -17,12 +18,12 @@ import (
 )
 
 const (
-	// GrantTypeTokenExchange is the RFC 8693 token exchange grant type.
-	GrantTypeTokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange"
+	// GrantTypeClientCredentials is the OAuth2 client credentials grant type.
+	GrantTypeClientCredentials = "client_credentials"
 
-	// TokenTypeJWT is the OAuth2 token type identifier for JWTs. Kubernetes
-	// ServiceAccount tokens are JWTs.
-	TokenTypeJWT = "urn:ietf:params:oauth:token-type:jwt"
+	// ClientAssertionTypeJWTBearer is the RFC 7523 JWT bearer client
+	// assertion type. Kubernetes ServiceAccount tokens are JWTs.
+	ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
 	// DefaultTokenPath is the authentik token endpoint path.
 	DefaultTokenPath = "/application/o/token/"
@@ -32,25 +33,24 @@ const (
 type Config struct {
 	URL          string
 	TokenPath    string
-	// Scopes are the default OAuth2 scopes requested on exchanged tokens.
-	Scopes       []string
-	// ClientID identifies the OAuth2 client performing the exchange. When
-	// set with ClientSecret, credentials are sent as HTTP Basic auth;
-	// without a secret the client is treated as public and only client_id
-	// is sent in the form body.
+	// Scopes are the default OAuth2 scopes requested on issued tokens.
+	Scopes []string
+	// ClientID identifies the OAuth2 client performing the request. It is
+	// sent in the form body; authentication happens via the JWT client
+	// assertion, no client secret is used.
 	ClientID     string
-	ClientSecret string
 	Timeout      time.Duration
 	InsecureTLS  bool
 	CACert       []byte
 	HTTPClient   *http.Client
 }
 
-// ExchangeRequest is a token exchange request.
+// ExchangeRequest is a client credentials token request authenticated with a
+// JWT client assertion.
 type ExchangeRequest struct {
-	// SubjectToken is the token presented for exchange (a Kubernetes
+	// ClientAssertion is the JWT presented as client assertion (a Kubernetes
 	// ServiceAccount JWT).
-	SubjectToken string
+	ClientAssertion string
 	// Scopes are the requested OAuth2 scopes.
 	Scopes []string
 }
@@ -69,7 +69,7 @@ func (r *ExchangeResponse) Expiry(now time.Time) time.Time {
 	return now.Add(time.Duration(r.ExpiresIn) * time.Second)
 }
 
-// Client performs token exchanges against an authentik instance.
+// Client performs token requests against an authentik instance.
 type Client struct {
 	cfg   Config
 	http  *http.Client
@@ -133,12 +133,15 @@ func (e oauthError) message() string {
 	return e.Error
 }
 
-// Exchange performs an RFC 8693 token exchange, presenting the Kubernetes
-// ServiceAccount JWT as subject token and receiving an authentik identity
-// token in return.
+// Exchange authenticates against authentik's token endpoint using the
+// client_credentials grant with the Kubernetes ServiceAccount JWT as client
+// assertion, and returns the issued authentik identity token.
 func (c *Client) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeResponse, error) {
-	if req.SubjectToken == "" {
-		return nil, errors.New("authentik: subject token is required")
+	if req.ClientAssertion == "" {
+		return nil, errors.New("authentik: client assertion is required")
+	}
+	if c.cfg.ClientID == "" {
+		return nil, errors.New("authentik: client ID is required")
 	}
 
 	scopes := req.Scopes
@@ -147,10 +150,11 @@ func (c *Client) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeRe
 	}
 
 	form := url.Values{
-		"grant_type":         {GrantTypeTokenExchange},
-		"subject_token":      {req.SubjectToken},
-		"subject_token_type": {TokenTypeJWT},
-		"scope":              {strings.Join(scopes, " ")},
+		"grant_type":            {GrantTypeClientCredentials},
+		"client_id":             {c.cfg.ClientID},
+		"client_assertion_type": {ClientAssertionTypeJWTBearer},
+		"client_assertion":      {req.ClientAssertion},
+		"scope":                 {strings.Join(scopes, " ")},
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.token, strings.NewReader(form.Encode()))
@@ -159,18 +163,6 @@ func (c *Client) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeRe
 	}
 	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	httpReq.Header.Set("Accept", "application/json")
-
-	if c.cfg.ClientID != "" {
-		if c.cfg.ClientSecret != "" {
-			httpReq.SetBasicAuth(c.cfg.ClientID, c.cfg.ClientSecret)
-		} else {
-			form.Set("client_id", c.cfg.ClientID)
-			httpReq.Body = io.NopCloser(strings.NewReader(form.Encode()))
-			httpReq.GetBody = func() (io.ReadCloser, error) {
-				return io.NopCloser(strings.NewReader(form.Encode())), nil
-			}
-		}
-	}
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -186,9 +178,9 @@ func (c *Client) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeRe
 	if resp.StatusCode != http.StatusOK {
 		var oaErr oauthError
 		if jsonErr := json.Unmarshal(body, &oaErr); jsonErr == nil && oaErr.Error != "" {
-			return nil, fmt.Errorf("authentik: token exchange rejected: %s", oaErr.message())
+			return nil, fmt.Errorf("authentik: token request rejected: %s", oaErr.message())
 		}
-		return nil, fmt.Errorf("authentik: token exchange failed with status %d: %s", resp.StatusCode, truncate(string(body), 200))
+		return nil, fmt.Errorf("authentik: token request failed with status %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 
 	var out ExchangeResponse

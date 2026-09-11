@@ -61,11 +61,6 @@ spec:
             {{- with .Values.authentik.clientID }}
             - --authentik-client-id={{ . }}
             {{- end }}
-            {{- if and .Values.authentik.clientSecretSecret.name .Values.authentik.clientSecretSecret.key }}
-            - --authentik-client-secret-file=/etc/kube-token-exchanger/client-secret/{{ .Values.authentik.clientSecretSecret.key }}
-            {{- else if .Values.authentik.clientSecret }}
-            - --authentik-client-secret={{ .Values.authentik.clientSecret }}
-            {{- end }}
           ports:
             - name: metrics
               containerPort: {{ trimPrefix ":" .Values.metrics.bindAddress }}
@@ -91,12 +86,6 @@ spec:
               mountPath: /etc/kube-token-exchanger/ca
               readOnly: true
           {{- end }}
-          {{- if and .Values.authentik.clientSecretSecret.name .Values.authentik.clientSecretSecret.key }}
-          volumeMounts:
-            - name: authentik-client-secret
-              mountPath: /etc/kube-token-exchanger/client-secret
-              readOnly: true
-          {{- end }}
       {{- if and .Values.authentik.caCertSecret.name .Values.authentik.caCertSecret.key }}
       volumes:
         - name: authentik-ca-cert
@@ -106,18 +95,6 @@ spec:
               - key: {{ .Values.authentik.caCertSecret.key }}
                 path: {{ .Values.authentik.caCertSecret.key }}
             {{- if .Values.authentik.caCertSecret.optional }}
-            optional: true
-            {{- end }}
-      {{- end }}
-      {{- if and .Values.authentik.clientSecretSecret.name .Values.authentik.clientSecretSecret.key }}
-      volumes:
-        - name: authentik-client-secret
-          secret:
-            secretName: {{ .Values.authentik.clientSecretSecret.name }}
-            items:
-              - key: {{ .Values.authentik.clientSecretSecret.key }}
-                path: {{ .Values.authentik.clientSecretSecret.key }}
-            {{- if .Values.authentik.clientSecretSecret.optional }}
             optional: true
             {{- end }}
       {{- end }}

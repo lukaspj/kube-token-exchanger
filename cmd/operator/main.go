@@ -1,6 +1,6 @@
 // Command operator runs the kube-token-exchanger operator, which exchanges
 // Kubernetes ServiceAccount identity tokens for authentik identity tokens
-// via RFC 8693 token exchange.
+// via OAuth2 client credentials with JWT client assertion.
 package main
 
 import (
@@ -44,8 +44,6 @@ func main() {
 	var authentikScopes string
 	var authentikTokenPath string
 	var authentikClientID string
-	var authentikClientSecret string
-	var authentikClientSecretFile string
 	var authentikTimeout time.Duration
 	var authentikInsecureTLS bool
 	var authentikCACertFile string
@@ -65,11 +63,7 @@ func main() {
 	flag.StringVar(&authentikCACertFile, "authentik-ca-cert", "",
 		"Path to a PEM file with the certificate authority used to verify the authentik TLS certificate.")
 	flag.StringVar(&authentikClientID, "authentik-client-id", "",
-		"OAuth2 client ID used to authenticate the token exchange against authentik.")
-	flag.StringVar(&authentikClientSecret, "authentik-client-secret", "",
-		"OAuth2 client secret for confidential clients. Prefer --authentik-client-secret-file.")
-	flag.StringVar(&authentikClientSecretFile, "authentik-client-secret-file", "",
-		"Path to a file containing the OAuth2 client secret (e.g. a mounted Secret). Overrides --authentik-client-secret.")
+		"OAuth2 client ID used for the client credentials request against authentik. Required.")
 	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error).")
 	flag.Parse()
 
@@ -101,22 +95,12 @@ func main() {
 	}
 
 	authentikConfig := authentik.Config{
-		URL:          authentikURL,
-		TokenPath:    authentikTokenPath,
-		Scopes:       authentikScopesList,
-		ClientID:     authentikClientID,
-		Timeout:      authentikTimeout,
-		InsecureTLS:  authentikInsecureTLS,
-	}
-	if authentikClientSecretFile != "" {
-		secret, err := os.ReadFile(authentikClientSecretFile)
-		if err != nil {
-			setupLog.Error(err, "unable to read --authentik-client-secret-file", "path", authentikClientSecretFile)
-			os.Exit(1)
-		}
-		authentikConfig.ClientSecret = strings.TrimSpace(string(secret))
-	} else if authentikClientSecret != "" {
-		authentikConfig.ClientSecret = authentikClientSecret
+		URL:         authentikURL,
+		TokenPath:   authentikTokenPath,
+		Scopes:      authentikScopesList,
+		ClientID:    authentikClientID,
+		Timeout:     authentikTimeout,
+		InsecureTLS: authentikInsecureTLS,
 	}
 	if authentikCACertFile != "" {
 		ca, err := os.ReadFile(authentikCACertFile)
